@@ -21,20 +21,18 @@ Created on Wed Jul 18 11:04:12 2018
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from bs4 import BeautifulSoup
-
-# use to strip date column correctly 
-def find_between(s, first, last):
-    try:
-        start = s.index(first) + len(first)
-        end = s.index(last, start)
-        return s[start:end]
-    except ValueError:
-        return ""
+import pandas as pd
+import os
 
 # use as main function for scraping
-def wr_scrape(user, pw, year, titles, bodies, dates, report_n): 
+def wr_scrape(user, pw, year, loc): 
+    
+    # provide container vectors       
+    titles = []
+    bodies = []
+    report_n = []
  
-    # specify location of Chrome and set as headless (silent)
+    # specify location of Chrome and (opt.) set as headless (silent)
     CHROMEDRIVER_PATH = '/Applications/chromedriver'    
     chrome_options = Options()  
     #chrome_options.add_argument("--headless")  
@@ -94,53 +92,89 @@ def wr_scrape(user, pw, year, titles, bodies, dates, report_n):
         date = story_page.findAll("h1")
         for h1 in date:
             report_n.append(h1.text)
-            specific_date = find_between(h1.text, "Weekly Report - ", " (" )
-            dates.append(specific_date)
-     
+              
+    # Combine output into data.frame
+    # combine as columns in dataframe:
+    # create lists of labels & values
+    list_labels = ['report_n', 'title', 'article_text'] 
+    list_values = [report_n, titles, bodies] 
+
+    # zip together labels and values and write a dataframe
+    df = pd.DataFrame(dict(list(zip(list_labels, list_values))))
+        
+    # write to .csv
+    os.chdir(loc)
+    df.to_csv('articles_' + str(year) + '.csv')
+    
+
+# Separate function for pre-2003 PDF versions of report
+def pdf_scrape(user, pw, year, loc): 
+        
+    # specify location of Chrome and (opt.) set as headless (silent)
+    CHROMEDRIVER_PATH = '/Applications/chromedriver'    
+    chrome_options = Options()  
+    #chrome_options.add_argument("--headless")  
+    #chrome_options.add_argument("--window-size=%s" % WINDOW_SIZE)
+    chrome_options.add_argument("--incognito")
+
+    profile = {"plugins.plugins_list": [{"enabled": False, "name": "Chrome PDF Viewer"}], # Disable Chrome's PDF Viewer
+               "download.default_directory": loc , "download.extensions_to_open": "applications/pdf"}
+    chrome_options.add_experimental_option("prefs", profile)
+
+    # load chrome driver
+    driver = webdriver.Chrome(executable_path=CHROMEDRIVER_PATH,
+                              chrome_options=chrome_options)  
+    
+    # Get content from URL
+    driver.implicitly_wait(30)
+    driver.get("https://www-latinnews-com.proxy3.library.mcgill.ca/component/k2/itemlist/category/33.html?archive=true&archive_id=33&update=true")
+    
+    # Enter login information and click submit button
+    username = driver.find_element_by_name('j_username')
+    password = driver.find_element_by_name('j_password')
+    username.send_keys(user)
+    password.send_keys(pw)
+    
+    login_button = driver.find_element_by_name('_eventId_proceed')
+    login_button.click()
+    
+    # go to specific year
+    driver.get("https://www-latinnews-com.proxy3.library.mcgill.ca/component/k2/itemlist/category/33.html?archive=true&archive_id=33&update=true")
+    year_select = driver.find_element_by_name('period')
+    year_select.send_keys(year)
+    
+    # Selenium hands the page source to Beautiful Soup
+    directory_page = BeautifulSoup(driver.page_source, 'lxml')
+    
+    # identify all links to pdfs
+    pdf_links = []
+    for link in directory_page.findAll("a", {"target":"_new"}):
+        if 'href' in link.attrs:
+            link = "https://www-latinnews-com.proxy3.library.mcgill.ca"+link.attrs['href']
+            pdf_links.append(link)
+    
+    # looping through each link and save pdf to loc
+    for link in pdf_links:
+        driver.get(link)
+
+
 #--------------------------
 # Scraping content
 #--------------------------
 
-# Provide user info
+# Provide user info and directory
 my_username = " "
 my_password = " "
- 
-# provide container vectors       
-titles = []
-bodies = []
-report_n = []
-dates = []  
+loc = '/Users/markwilliamson/Documents/RA Work/Corruption/Web scraping'
 
-# scrape pages
-wr_scrape(my_username, my_password, 2017, titles, bodies, dates, report_n)
+# scrape html pages
+wr_scrape(my_username, my_password, 2013, loc)
 
-# Loop through years - 2003 is the first year available 
-#years = range(2003, 2018)
-years = (2017,2018)
+# problem years: 2004, 2012
 
-for year in years: 
-    wr_scrape(my_username, my_password, year, titles, bodies, dates, report_n)
-
-
-# ------------------------------------
-# Combine output into data.frame
-# ------------------------------------
-import pandas as pd
-import os
-
-# combine as columns in dataframe:
-# create lists of labels & values
-list_labels = ['date', 'report_n', 'title', 'article_text'] 
-list_values = [dates, report_n, titles, bodies] 
-
-# zip together labels and values and write a dataframe
-df = pd.DataFrame(dict(list(zip(list_labels, list_values))))
-
-# write to .csv
-os.chdir('/Users/markwilliamson/Documents/RA Work/Corruption/Web scraping')
-df.to_csv('articles_2017_18.csv')
-
-
+# scrape pre-2003 PDFs
+loc = '/Users/markwilliamson/Documents/RA Work/Corruption/Web scraping/Pre-2003 PDFs/'
+pdf_scrape(my_username, my_password, 1999, loc)
 
 
 
