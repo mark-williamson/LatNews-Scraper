@@ -15,6 +15,7 @@ import os
 from datetime import datetime
 from selenium.webdriver.support.ui import Select
 from selenium.webdriver.common.by import By
+import re
 
 def pre2003_scrape(user, pw): 
     
@@ -55,11 +56,11 @@ def pre2003_scrape(user, pw):
     # -----------------
     
     #   get cookie consent window removed
-    driver.implicitly_wait(30)
+    driver.implicitly_wait(120)
     driver.find_element_by_xpath("//*[@aria-label='dismiss cookie message']").click()
     
     #   click button to uncheck all report boxes
-    driver.implicitly_wait(30)
+    driver.implicitly_wait(120)
     invert_sel_button = driver.find_element_by_id("invertselectsearchlink")
     invert_sel_button.click()
             
@@ -71,10 +72,8 @@ def pre2003_scrape(user, pw):
     
 
     #   set date range
-    #       these will be user-provided later
     date1 = "1/1/2003" 
     date2 = "31/1/2003"
-    #       this will remain in function
     date1 = datetime.strptime(date1, "%d/%m/%Y")
     date2 = datetime.strptime(date2, "%d/%m/%Y")
     
@@ -106,18 +105,16 @@ def pre2003_scrape(user, pw):
     # -----------------
 
 # Return to problem here
+    driver.implicitly_wait(30)
 
     # Selenium hands the page source to Beautiful Soup
     search_results_page = BeautifulSoup(driver.page_source, 'lxml')
     
-    # provide container vectors       d
+    # provide container vectors
     titles = []
     bodies = []
     report_n = []
     
-    
-    for bullet in search_results_page.findAll("li", )
-
     # identify all links in relevant section of the page (i.e. only links to stories)
     story_links = []
     for link in search_results_page.findAll("a", {"class":"archive_item searchlist_a3"}):
@@ -131,23 +128,47 @@ def pre2003_scrape(user, pw):
         driver.get("https://www-latinnews-com.proxy3.library.mcgill.ca/" + link)
         story_page = BeautifulSoup(driver.page_source, 'lxml')
             
+        # pull dates in form of WR title -- WORKING
+        date = story_page.find_all("h2", string=re.compile("Weekly Report"))
+        for h2 in date:
+                report_n.append(h2.text)
+                        
         # pull titles
         title = story_page.findAll("h3")
         for title in title:
-            titles.append(title.text)
+                titles.append(title.text)
                 
         # pull bodies
-        body = story_page.findAll("b", {"class":"col-lg-12 main-content-area"})
-        for article in body:
-            bodies.append(article.text)
-                
-        # pull dates in form of WR title
-        date = story_page.findAll("h2", {"style":"margin-bottom: 15px; font-size: 36px"})
-        for h2 in date:
-                report_n.append(h2.text)
-                
+        for para in story_page.find_all("div", {"class":"col-lg-12 main-content-area"}):
+            
+            # this gets a ton of text that isn't wanted, will need to slice away unwanted
+            all_text = para.get_text(separator=' ')
+            
+            # cut out 'return to top' at end of string
+            if all_text.endswith('Return to top'):
+                all_text = all_text[:-14]
+            else:
+                all_text = all_text
+            
+            # find date again and attach to other header element
+            header = ["Latinnews Archive " + h2.text + " " for h2 in story_page.find_all("h2", string=re.compile("Weekly Report"))]
+            
+            # remove date, header info from all_text
+            all_text = all_text.split(header[0])[-1]
+            
+            # repeat for title text
+            title = [title.text + " " for title in story_page.findAll("h3")]
+            all_text = all_text.split(title[0])[-1]
+            
+            bodies.append(all_text)
 
-    # Combine output into data.frame
+
+# next step: write to csv
+                
+    # -----------------
+    # 3. Combine output into data.frame
+    # -----------------
+    
     # combine as columns in dataframe:
     # create lists of labels & values
     list_labels = ['report_n', 'title', 'article_text'] 
