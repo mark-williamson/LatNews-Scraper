@@ -20,48 +20,48 @@ from selenium.common.exceptions import ElementNotVisibleException, WebDriverExce
 from selenium.webdriver.support import expected_conditions as EC
 
 
-def pre2003_scrape(user, pw, search, date1, date2, loc): 
-    
     # -----------------    
     # 1. Initiate browser and enter proxy credentials
     # -----------------
     
     # specify location of Chrome and (opt.) set as headless (silent)
-    CHROMEDRIVER_PATH = '/Applications/chromedriver'    
-    chrome_options = Options()  
+CHROMEDRIVER_PATH = '/Applications/chromedriver'    
+chrome_options = Options()  
     #chrome_options.add_argument("--headless")  
     #chrome_options.add_argument("--window-size=%s" % WINDOW_SIZE)
-    chrome_options.add_argument("--incognito")
-
-    profile = {"plugins.plugins_list": [{"enabled": False, "name": "Chrome PDF Viewer"}], # Disable Chrome's PDF Viewer
-               "download.default_directory": loc , "download.extensions_to_open": "applications/pdf"}
-    chrome_options.add_experimental_option("prefs", profile)
+chrome_options.add_argument("--incognito")
 
     # load chrome driver
-    driver = webdriver.Chrome(executable_path=CHROMEDRIVER_PATH,
-                              chrome_options=chrome_options)  
+driver = webdriver.Chrome(executable_path=CHROMEDRIVER_PATH,
+                          chrome_options=chrome_options)  
     
     # Get content from URL
-    driver.implicitly_wait(30)
-    driver.get("https://www-latinnews-com.proxy3.library.mcgill.ca/search.html#")
+driver.implicitly_wait(30)
+driver.get("https://www-latinnews-com.proxy3.library.mcgill.ca/search.html#")
     
     # Enter login information and click submit button
-    username = driver.find_element_by_name('j_username')
-    password = driver.find_element_by_name('j_password')
-    username.send_keys(user)
-    password.send_keys(pw)
+username = driver.find_element_by_name('j_username')
+password = driver.find_element_by_name('j_password')
+username.send_keys(my_username)
+password.send_keys(my_password)
     
-    login_button = driver.find_element_by_name('_eventId_proceed')
-    login_button.click()
+login_button = driver.find_element_by_name('_eventId_proceed')
+login_button.click()
+
+
+    #   get cookie consent window removed
+driver.implicitly_wait(120)
+driver.find_element_by_xpath("//*[@aria-label='dismiss cookie message']").click()
+                
+
+def pre2003_scrape(search, date1, date2, loc): 
     
     # -----------------
     # 2. Execute search
     # -----------------
     
-    #   get cookie consent window removed
-    driver.implicitly_wait(120)
-    driver.find_element_by_xpath("//*[@aria-label='dismiss cookie message']").click()
-                
+    driver.get("https://www-latinnews-com.proxy3.library.mcgill.ca/search.html#")
+    
     #   select only WR reports -- this is kinda janky w/ the [1] but not sure how else to directly select the correct checkbox otherwise
     buttons = [str(num) for num in [3, 38, 25, 26, 28, 40, 74, 8, 7, 6, 11]]
     driver.implicitly_wait(1000)
@@ -109,7 +109,8 @@ def pre2003_scrape(user, pw, search, date1, date2, loc):
     
     # identify all links in relevant section of the page (i.e. only links to stories)
     story_links = []
-    for link in search_results_page.findAll("a", {"class":["archive_item searchlist_a3", "archive_item searchlist_a4"]}):
+    link_regex = re.compile('.*archive_item searchlist.*')
+    for link in search_results_page.findAll("a", {"class":link_regex}):
         if 'href' in link.attrs:
             link = link.attrs['href']
             story_links.append(link)
@@ -179,12 +180,11 @@ def pre2003_scrape(user, pw, search, date1, date2, loc):
     os.chdir(loc)
     df.to_csv('articles_' + str(date1)[:10] + '_' + str(date2)[:10] + '.csv')
 
-    driver.close()
 
 # actual search
 my_username = ""
 my_password = ""
-search = "Argentina OR Bahamas OR Barbados OR Belize OR Bolivia OR Brazil OR Chile OR Colombia OR Costa Rica OR Cuba OR Dominican Republic OR Ecuador OR El Salvador OR Guatemala OR Guyana OR Haiti OR Honduras OR Jamaica OR Mexico OR Nicaragua OR Panama OR Paraguay OR Peru OR Suriname OR Trinidad & Tobago OR Uruguay OR Venezuela"
+search = "Latin America OR Argentina OR Bahamas OR Barbados OR Belize OR Bolivia OR Brazil OR Chile OR Colombia OR Costa Rica OR Cuba OR Dominican Republic OR Ecuador OR El Salvador OR Guatemala OR Guyana OR Haiti OR Honduras OR Jamaica OR Mexico OR Nicaragua OR Panama OR Paraguay OR Peru OR Suriname OR Trinidad OR Uruguay OR Venezuela"
 loc = '/Users/markwilliamson/Documents/RA Work/Corruption/Web scraping/Pre-2003'
 
 
@@ -209,42 +209,24 @@ def return_dates(year):
     
     return(start_dates, end_dates)
 
-start_dates, end_dates = return_dates(2003)
+start_dates, end_dates = return_dates(2002)
 
 
 # Loop over dates and run scraper on each 
-for date in range(4,len(start_dates)+1): 
-    pre2003_scrape(my_username, my_password, search, start_dates[date], end_dates[date], loc)
+for date in range(0,len(start_dates)+1): 
+    pre2003_scrape(search, start_dates[date], end_dates[date], loc)
 
 
+'''
+problem: search box is limited to 250 characters. 
 
+ I think we'll need to write a loop that searches sections of this string for 
+ the given dates and then appends them if they're not already found by the earlier 
+ part of the search(es)?? fuck that's a disaster 
 
+full search:  
+Latin America OR Argentina OR Bahamas OR Barbados OR Belize OR Bolivia OR Brazil OR Chile OR Colombia OR Costa Rica OR Cuba OR Dominican Republic OR Ecuador OR El Salvador OR Guatemala OR Guyana OR Haiti OR Honduras OR Jamaica OR Mexico OR Nicaragua OR Panama OR Paraguay OR Peru OR Suriname OR Trinidad & Tobago OR Uruguay OR Venezuela OR economy OR politics OR party OR election OR finance OR corruption OR country OR island OR minister OR military OR war OR polls OR vote OR buy OR trade OR speech OR resources OR public OR company OR protest OR budget OR government OR unemployment OR market OR economic OR political OR poll OR violence OR court OR prosecution OR international OR tax OR social OR power    
 
-
-''' experimenting with wait solution to cookie box
-    #   get cookie consent window removed
-    driver.implicitly_wait(1000)
-    try:
-        driver.find_element_by_xpath("//*[@aria-label='dismiss cookie message']").click()
-    except WebDriverException:
-        driver.implicitly_wait(1000)
-        driver.find_element_by_xpath("//*[@aria-label='dismiss cookie message']").click()
-    
-    #   click button to uncheck all report boxes
-    driver.implicitly_wait(1000)
-    try:
-        invert_sel_button = driver.find_element_by_id("invertselectsearchlink")
-        invert_sel_button.click()
-    except WebDriverException: 
-        driver.implicitly_wait(1000)
-        driver.find_element_by_xpath("//*[@aria-label='dismiss cookie message']").click()
-        invert_sel_button = driver.find_element_by_id("invertselectsearchlink")
-        invert_sel_button.click()
-    except ElementNotVisibleException: 
-        driver.implicitly_wait(1000)
-        driver.find_element_by_xpath("//*[@aria-label='dismiss cookie message']").click()
-        invert_sel_button = driver.find_element_by_id("invertselectsearchlink")
-        invert_sel_button.click() 
 '''
 
 
